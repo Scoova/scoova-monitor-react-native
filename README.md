@@ -146,22 +146,23 @@ the batch threshold is hit. Manual flush is rarely needed.
 
 React Native release builds produce two kinds of debug symbols:
 
-- **Hermes / Metro source maps** for the JS bundle — upload with the Web
-  SDK's CLI, which understands `.map` files:
+- **Hermes / Metro source maps** for the JS bundle — de-obfuscates JS
+  stack traces.
+- **Native debug symbols** — the Android `mapping.txt` (ProGuard / R8) and
+  the iOS `.dSYM`s — for crashes below the JS layer.
 
-  ```bash
-  npx scoova-upload-sourcemaps \
-      --api-key sm_your_api_key \
-      --version 1.0.0 \
-      --build 42 \
-      --dir ./android/app/build/generated/sourcemaps/react/release
-  ```
+Upload them with the standalone Node scripts that ship in the SDK
+repositories — `scoova-upload-sourcemaps.js` in the Web SDK repo,
+`scoova-upload-mapping.js` in the Android SDK repo, and
+`scoova-upload-dsyms.js` in the iOS SDK repo. Each runs with Node:
 
-- **Native debug symbols** for crashes that happen below the JS layer —
-  upload the Android `mapping.txt` with `npx scoova-upload-mapping` (from
-  `com.scoova.monitor:sdk-android`) and the iOS `.dSYM`s with
-  `npx scoova-upload-dsyms` (from the iOS SDK package). See those SDKs'
-  READMEs for details.
+```bash
+node scoova-upload-sourcemaps.js \
+    --api-key sm_your_api_key \
+    --version 1.0.0 \
+    --build 42 \
+    --dir ./android/app/build/generated/sourcemaps/react/release
+```
 
 For the full release-build wiring see
 [the documentation](https://monitor.scoo-va.info/docs).

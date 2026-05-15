@@ -7,6 +7,7 @@
   "files": [
     "src",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "keywords": [
@@ -22,8 +23,7 @@
   "homepage": "https://monitor.scoo-va.info",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Scoova/scoova-monitor-react-native.git",
-    "directory": "sdk-react-native"
+    "url": "https://github.com/Scoova/scoova-monitor-react-native.git"
   },
   "peerDependencies": {
     "react": ">=18.0.0",
