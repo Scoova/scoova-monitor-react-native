@@ -22,7 +22,7 @@
   "homepage": "https://monitor.scoo-va.info",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zaidzedoo007/scoova-monitor.git",
+    "url": "https://github.com/Scoova/scoova-monitor-react-native.git",
     "directory": "sdk-react-native"
   },
   "peerDependencies": {
