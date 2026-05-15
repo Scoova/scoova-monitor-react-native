@@ -1,0 +1,45 @@
+{
+  "name": "@scoova/monitor-react-native",
+  "version": "1.4.0",
+  "description": "Scoova Monitor SDK for React Native — Crash reporting, analytics, performance, battery tracking",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "react-native",
+    "crash-reporting",
+    "analytics",
+    "monitoring",
+    "scoova",
+    "performance",
+    "battery"
+  ],
+  "author": "Scoova <dev@scoo-va.info>",
+  "homepage": "https://monitor.scoo-va.info",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zaidzedoo007/scoova-monitor.git",
+    "directory": "sdk-react-native"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-native": ">=0.72.0",
+    "@react-native-async-storage/async-storage": ">=1.19.0",
+    "react-native-device-info": ">=10.0.0",
+    "@react-native-community/netinfo": ">=11.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@react-native-async-storage/async-storage": { "optional": true },
+    "react-native-device-info": { "optional": true },
+    "@react-native-community/netinfo": { "optional": true }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "license": "Apache-2.0"
+}
