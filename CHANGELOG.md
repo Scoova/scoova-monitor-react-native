@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.1
+
+- Install attribution: the SDK no longer reports a fabricated
+  `install_source` of `"organic"` when no MMP (AppsFlyer / Branch) is
+  installed. An unmeasured install now reports nothing and buckets as
+  "direct" in the dashboard.
+- Added `setInstallSource(source, campaign?)` — a manual hook to report
+  attribution from your own wiring (parity with the iOS/Android SDKs).
+
 ## 1.4.0
 
 Initial public release of the Scoova Monitor React Native SDK.

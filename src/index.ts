@@ -15,7 +15,7 @@
 
 import { Platform, AppState, Dimensions, NativeModules } from 'react-native'
 
-const SDK_VERSION = '1.4.0'
+const SDK_VERSION = '1.4.1'
 const HTTP_TIMEOUT_MS = 10_000
 const FAILURE_BACKOFF_THRESHOLD = 3
 const MAX_QUEUE_PERSISTED = 1000
@@ -542,7 +542,8 @@ class ScoovaMonitorSDK {
    *      for the token and post to Apple. (We don't ship a native module
    *      for this — rely on the host having one of the above attribution
    *      packages, or call setInstallSource manually.)
-   *   3. Else fall back to `organic` so at least the install is bucketed.
+   *   3. Else report nothing — an unmeasured install honestly buckets
+   *      as "direct" rather than a fabricated "organic".
    *
    * Idempotent via AsyncStorage — runs on first install, not every cold
    * start. Host can override any time with setInstallSource().
@@ -556,7 +557,10 @@ class ScoovaMonitorSDK {
     // Probe for known attribution packages, in priority order. Each probe
     // is wrapped — if a package is missing or misbehaving we silently fall
     // through to the next.
-    let source = 'organic'
+    // Only report a source we actually measured. With no MMP wired up
+    // we report nothing — the install honestly buckets as "direct"
+    // instead of a fabricated "organic".
+    let source: string | null = null
     let campaign = ''
 
     // 1. AppsFlyer — covers iOS + Android paid attribution, most popular
@@ -577,7 +581,7 @@ class ScoovaMonitorSDK {
     } catch { /* not installed */ }
 
     // 2. Branch — same idea, different package. Many ecommerce apps use it.
-    if (source === 'organic') {
+    if (!source) {
       try {
         const branch = require('react-native-branch')?.default || require('react-native-branch')
         const params = await branch.getLatestReferringParams?.()
@@ -588,11 +592,15 @@ class ScoovaMonitorSDK {
       } catch { /* not installed */ }
     }
 
-    this.trackEvent('install_info', {
-      install_source: source,
-      install_campaign: campaign,
-      session_number: String(this.sessionNumber || 1),
-    })
+    // Fire install_info only when a real source was detected. An
+    // undetected install sends nothing and buckets as "direct".
+    if (source) {
+      this.trackEvent('install_info', {
+        install_source: source,
+        install_campaign: campaign,
+        session_number: String(this.sessionNumber || 1),
+      })
+    }
     try { await AsyncStorage.setItem('sm_install_attr_done', '1') } catch { /* */ }
   }
 
@@ -641,6 +649,22 @@ class ScoovaMonitorSDK {
     if (this.lastIdentifiedAs === hashed) return
     if (previousUserId === userId && this.identifySent) return
     void this.fireIdentify(anon, hashed)
+  }
+
+  /**
+   * Report install attribution for this install. The RN SDK only
+   * auto-detects a source when the host has an MMP (AppsFlyer / Branch)
+   * installed — this is the manual hook for everyone else. Call it once,
+   * early, with data from your own attribution wiring. Without it the
+   * install honestly buckets as "direct" in the dashboard.
+   */
+  setInstallSource(source: string, campaign?: string) {
+    if (!source) return
+    this.trackEvent('install_info', {
+      install_source: source,
+      install_campaign: campaign || '',
+      session_number: String(this.sessionNumber || 1),
+    })
   }
 
   private identifySent = false

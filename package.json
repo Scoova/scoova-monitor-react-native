@@ -1,6 +1,6 @@
 {
   "name": "@scoova/monitor-react-native",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Scoova Monitor SDK for React Native — Crash reporting, analytics, performance, battery tracking",
   "main": "src/index.ts",
   "types": "src/index.ts",
