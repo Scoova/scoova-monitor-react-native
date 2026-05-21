@@ -1,24 +1,24 @@
 # Changelog
 
-## 1.4.1
+## 1.5.0 — 2026-05-21
 
-- Install attribution: the SDK no longer reports a fabricated
-  `install_source` of `"organic"` when no MMP (AppsFlyer / Branch) is
-  installed. An unmeasured install now reports nothing and buckets as
-  "direct" in the dashboard.
-- Added `setInstallSource(source, campaign?)` — a manual hook to report
-  attribution from your own wiring (parity with the iOS/Android SDKs).
+### Added
+- **Network instrumentation** — wraps `global.fetch` and
+  `XMLHttpRequest.prototype`. Outbound HTTP becomes breadcrumbs
+  (method/host/status/duration) plus a `network/request_duration_ms`
+  metric. Excludes `scoo-va.info` from instrumentation. On by default;
+  disable via `enableNetworkInstrumentation: false`.
+- **Continuous battery + memory sampling** — periodic 60s emit of
+  `battery/level` and `memory/used_bytes` via DeviceInfo's sync APIs.
+  Configurable via `resourceSampleIntervalMs` (0 to disable).
+- **Install date** persisted to AsyncStorage on first init. Forwarded as
+  `device.installDate` (ms since epoch).
+- `trackCustomMetric(name, value, unit)` public API — parity with iOS,
+  Android, Flutter, and Web SDKs.
+
+### Changed
+- SDK version reported as `1.5.0` in every event payload.
 
 ## 1.4.0
 
-Initial public release of the Scoova Monitor React Native SDK.
-
-- Crash reporting — uncaught errors and unhandled promise rejections
-- Analytics events and screen tracking (React Navigation aware)
-- Performance metrics — cold start and frame-rate sampling
-- Battery monitoring (with `react-native-device-info`)
-- Structured logging with tagged loggers
-- Privacy: user IDs are SHA-256 hashed on-device before sending;
-  no device location is collected
-- GDPR / CCPA `clearLocalUserData()` helper
-- Pure TypeScript — no native module to link
+Initial public release.

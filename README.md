@@ -56,7 +56,7 @@ only the SDK probes for known React Native libraries in the bundle
 `@stripe/stripe-react-native`, etc.) and emits a single `detected_sdks`
 event.
 
-See [the documentation](https://monitor.scoo-va.info/docs)
+See [the SDK documentation](../docs/)
 for the full collection inventory.
 
 ## API
@@ -165,8 +165,8 @@ node scoova-upload-sourcemaps.js \
 ```
 
 For the full release-build wiring see
-[the documentation](https://monitor.scoo-va.info/docs).
+[the SDK documentation](../docs/).
 
 ## License
 
-[Apache 2.0](LICENSE).
+[Apache 2.0](../LICENSE).

@@ -1,13 +1,12 @@
 {
   "name": "@scoova/monitor-react-native",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Scoova Monitor SDK for React Native — Crash reporting, analytics, performance, battery tracking",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "files": [
     "src",
     "README.md",
-    "CHANGELOG.md",
     "LICENSE"
   ],
   "keywords": [
@@ -23,7 +22,8 @@
   "homepage": "https://monitor.scoo-va.info",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Scoova/scoova-monitor-react-native.git"
+    "url": "https://github.com/zaidzedoo007/scoova-monitor.git",
+    "directory": "sdk-react-native"
   },
   "peerDependencies": {
     "react": ">=18.0.0",

@@ -15,7 +15,7 @@
 
 import { Platform, AppState, Dimensions, NativeModules } from 'react-native'
 
-const SDK_VERSION = '1.4.1'
+const SDK_VERSION = '1.5.0'
 const HTTP_TIMEOUT_MS = 10_000
 const FAILURE_BACKOFF_THRESHOLD = 3
 const MAX_QUEUE_PERSISTED = 1000
@@ -71,6 +71,19 @@ interface Config {
    * explicitly only if you want the "Detected SDKs" dashboard.
    */
   enableSDKDetection?: boolean
+  /**
+   * Wrap `global.fetch` and `XMLHttpRequest.prototype` to record outbound
+   * HTTP requests as breadcrumbs + network-timing metrics, matching the
+   * iOS / Android SDKs' OkHttp / URLProtocol instrumentation. Defaults to
+   * `true`. Calls to scoo-va.info are excluded automatically so the SDK
+   * never instruments itself.
+   */
+  enableNetworkInstrumentation?: boolean
+  /**
+   * Interval (ms) for the continuous battery + memory sampling pass.
+   * Defaults to 60_000 (one minute). Set to 0 to disable.
+   */
+  resourceSampleIntervalMs?: number
 }
 
 interface LogEntry {
@@ -432,6 +445,27 @@ class ScoovaMonitorSDK {
     // give without a native module.
     this.startHangDetector()
 
+    // Network instrumentation — wraps global.fetch + XHR so outbound
+    // HTTP requests show up as breadcrumbs ("GET /api/x → 200 in 120ms")
+    // alongside crash reports. Off by an explicit `false` config flag,
+    // on otherwise. Excludes scoo-va.info so the SDK doesn't trace
+    // itself.
+    if (this.config.enableNetworkInstrumentation !== false) {
+      this.installNetworkInstrumentation()
+    }
+
+    // Continuous battery + memory sampling. Matches the Android/iOS
+    // BatteryTracker + PerformanceTracker periodic samples. Off when
+    // resourceSampleIntervalMs is explicitly 0.
+    const sampleMs = this.config.resourceSampleIntervalMs ?? 60_000
+    if (sampleMs > 0) this.startResourceSampling(sampleMs)
+
+    // Stamp the install-date on the first run. Persisted in AsyncStorage
+    // so it survives across launches but resets when the host app's
+    // data is cleared, which is the same behaviour as iOS UserDefaults
+    // and Android first_install_time.
+    void this.ensureInstallDate()
+
     // Async bootstrap: load queues from disk, replay any pending crashes from
     // a prior session, then track this session's session_start. Doing this in
     // bootstrap() (rather than racing load() against trackEvent on the same
@@ -500,8 +534,11 @@ class ScoovaMonitorSDK {
     // is best-effort — an empty result is fine when bundling tools
     // can't resolve at build time.
     const dynamicRequire = (globalThis as any).require ||
-      // fallback for older RN versions
-      ((typeof __r !== 'undefined') ? __r : null)
+      // Fallback for older RN versions: `__r` is the Metro bundler's
+      // global require function. It's not declared in any DT file, so
+      // we reach for it via globalThis to keep tsc happy.
+      ((globalThis as any).__r as ((m: string) => unknown) | undefined) ||
+      null
     const probe = (name: string, key: string) => {
       if (!dynamicRequire) return
       try { dynamicRequire(name); detected[key] = 'unknown' } catch { /* not bundled */ }
@@ -974,6 +1011,130 @@ class ScoovaMonitorSDK {
     }, 5000)
   }
 
+  // ───────── Network instrumentation ─────────
+  //
+  // Wrap global.fetch + XHR so we record method, host, status, and elapsed
+  // ms as breadcrumbs. Excludes the SDK's own ingest endpoint. Errors in
+  // the wrapper itself MUST NOT bubble up — we catch and continue so a
+  // broken instrumentation never breaks the host app's network layer.
+
+  private networkInstalled = false
+
+  private installNetworkInstrumentation() {
+    if (this.networkInstalled) return
+    this.networkInstalled = true
+
+    // fetch
+    const origFetch = (global as any).fetch
+    if (typeof origFetch === 'function') {
+      const self = this
+      ;(global as any).fetch = async function (input: any, init?: any) {
+        const url = typeof input === 'string' ? input : input?.url || ''
+        if (url.includes('scoo-va.info')) return origFetch.call(this, input, init)
+        const method = (init?.method || 'GET').toUpperCase()
+        const t0 = Date.now()
+        try {
+          const res = await origFetch.call(this, input, init)
+          const dt = Date.now() - t0
+          self.addBreadcrumb(`${method} ${self.hostOf(url)} → ${(res && res.status) || '?'} (${dt}ms)`, 'network')
+          self.trackMetric('network', 'request_duration_ms', dt, 'ms')
+          return res
+        } catch (err: any) {
+          const dt = Date.now() - t0
+          self.addBreadcrumb(`${method} ${self.hostOf(url)} → failed (${dt}ms)`, 'network')
+          throw err
+        }
+      }
+    }
+
+    // XMLHttpRequest — older libs + React Native's built-in fetch use this
+    // underneath. We hook open() to remember URL+method and send() to
+    // measure round-trip via the existing onreadystatechange.
+    const XHR: any = (global as any).XMLHttpRequest
+    if (typeof XHR === 'function') {
+      const origOpen = XHR.prototype.open
+      const origSend = XHR.prototype.send
+      const self = this
+      XHR.prototype.open = function (method: string, url: string, ...rest: any[]) {
+        this.__sm_url = url
+        this.__sm_method = (method || 'GET').toUpperCase()
+        return origOpen.apply(this, [method, url, ...rest])
+      }
+      XHR.prototype.send = function (...args: any[]) {
+        const url: string = this.__sm_url || ''
+        const method: string = this.__sm_method || 'GET'
+        const t0 = Date.now()
+        if (!url.includes('scoo-va.info')) {
+          this.addEventListener('loadend', () => {
+            const dt = Date.now() - t0
+            self.addBreadcrumb(`${method} ${self.hostOf(url)} → ${this.status || '?'} (${dt}ms)`, 'network')
+            self.trackMetric('network', 'request_duration_ms', dt, 'ms')
+          })
+        }
+        return origSend.apply(this, args)
+      }
+    }
+  }
+
+  /** Hostname of a URL for breadcrumb labels. Falls back to the literal
+   *  string if parsing fails — RN's URL class historically had gaps. */
+  private hostOf(url: string): string {
+    try { return new URL(url).host || url } catch { return url.slice(0, 60) }
+  }
+
+  // ───────── Battery + memory sampling ─────────
+
+  private resourceTimer: ReturnType<typeof setInterval> | null = null
+
+  private startResourceSampling(intervalMs: number) {
+    if (this.resourceTimer) return
+    const tick = () => {
+      try {
+        const lvl: number | undefined = DeviceInfo?.getBatteryLevelSync?.()
+        if (typeof lvl === 'number' && lvl >= 0) {
+          this.trackMetric('battery', 'level', Math.round(lvl * 100), 'percent')
+        }
+        const used: number | undefined = DeviceInfo?.getUsedMemorySync?.()
+        if (typeof used === 'number' && used > 0) {
+          this.trackMetric('memory', 'used_bytes', used, 'bytes')
+        }
+      } catch { /* never let the sampler crash the JS thread */ }
+    }
+    tick()
+    this.resourceTimer = setInterval(tick, intervalMs)
+  }
+
+  // ───────── Install date ─────────
+  //
+  // First-run timestamp, mirrors iOS/Android. Persisted via AsyncStorage
+  // when available so it survives app restarts. Used by the dashboard's
+  // cohort + retention math.
+
+  private installDateMs: number | null = null
+
+  private async ensureInstallDate() {
+    if (!AsyncStorage) return
+    try {
+      const raw = await AsyncStorage.getItem('sm_install_date')
+      if (raw) { this.installDateMs = parseInt(raw); return }
+      const now = Date.now()
+      await AsyncStorage.setItem('sm_install_date', String(now))
+      this.installDateMs = now
+    } catch { /* AsyncStorage unavailable */ }
+  }
+
+  // ───────── Public: custom metrics ─────────
+
+  /**
+   * Track a custom metric — arbitrary name + numeric value + unit.
+   * Mirrors the iOS + Android `trackCustomMetric(name, value, unit)` API
+   * so RN apps can emit the same metric stream the native SDKs do.
+   */
+  trackCustomMetric(name: string, value: number, unit: string = 'count') {
+    if (!this.initialized) return
+    this.trackMetric('custom', name, value, unit)
+  }
+
   /**
    * Wire React Navigation for automatic screen tracking. Call this
    * once with your `NavigationContainer` ref (or the navigation
@@ -1185,6 +1346,10 @@ class ScoovaMonitorSDK {
     // devices we leave it null since v10.x dropped the sync detection API;
     // a separate jailbreak-detection lib would be needed for that signal.
     if (isEmulatorFlag === false) out.jailbroken = false
+    // Install date — populated on first init() once AsyncStorage resolves.
+    // Returns ms-since-epoch. Mirrors iOS getInstallDate() + Android
+    // packageManager.getPackageInfo().firstInstallTime.
+    if (this.installDateMs !== null) out.installDate = this.installDateMs
     return out
   }
 
